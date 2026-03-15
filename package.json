@@ -1,0 +1,13 @@
+{
+  "name": "youtube-playlist-link-extractor",
+  "version": "1.2.0",
+  "description": "Chrome extension to extract all video links from a YouTube playlist",
+  "author": "Daniel Tebecheri (Argentum Labs)",
+  "license": "MIT",
+  "scripts": {
+    "generate-icons": "node scripts/generate-icons.js"
+  },
+  "devDependencies": {
+    "canvas": "^3.2.1"
+  }
+}

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Playlist Link Extractor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      background: #0f0f0f;
+      color: #f1f1f1;
+      font-family: 'Roboto', Arial, sans-serif;
+      font-size: 14px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #272727;
+    }
+    header h1 {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .lang-selector {
+      display: flex;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .lang-opt {
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .lang-opt.active { background: #ff0000; color: #fff; }
+    #btn-help {
+      background: #272727;
+      border: none;
+      color: #aaa;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    #btn-help:hover, #btn-help.active { background: #ff0000; color: #fff; }
+
+    /* ── Tutorial panel ── */
+    #tutorial-panel {
+      display: none;
+      background: #161616;
+      border-bottom: 1px solid #272727;
+      padding: 14px 16px;
+    }
+    #tutorial-panel.open { display: block; }
+    #tutorial-panel ol {
+      padding-left: 16px;
+      color: #ccc;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    #tutorial-panel ol li strong { color: #f1f1f1; }
+
+    /* ── Main content ── */
+    .content {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .url-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .url-row label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    #url-input {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 12px;
+      padding: 7px 10px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #url-input::placeholder { color: #555; }
+    #url-input:focus { border-color: #ff0000; }
+
+    #status-msg {
+      font-size: 12px;
+      color: #888;
+      min-height: 15px;
+    }
+    #status-msg.error { color: #ff4444; }
+    #status-msg.success { color: #4caf50; }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: 4px;
+      padding: 9px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+    #btn-extract { background: #ff0000; color: #fff; }
+    #btn-extract:hover:not(:disabled) { background: #cc0000; }
+    #btn-extract:disabled { background: #3a1a1a; color: #666; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #results-section {
+      display: none;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .results-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #count-label { font-size: 12px; color: #888; }
+
+    .format-toggle {
+      display: flex;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .fmt-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .fmt-btn.active { background: #ff0000; color: #fff; }
+
+    #output {
+      width: 100%;
+      height: 190px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 11.5px;
+      line-height: 1.55;
+      padding: 10px;
+      resize: vertical;
+    }
+
+    .copy-row { display: flex; gap: 8px; }
+    .btn-copy {
+      flex: 1;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: #272727;
+      border: none;
+      border-radius: 4px;
+      color: #f1f1f1;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-copy:hover { background: #383838; }
+    .btn-copy.copied { background: #1a3a1a; color: #4caf50; }
+    .btn-copy.visible { display: flex; }
+
+    #or-label { font-size: 11px; color: #555; margin-top: 2px; display: none; }
+
+    #playlist-preview {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: #161616;
+      border: 1px solid #2a2a2a;
+      border-left: 3px solid #ff0000;
+      border-radius: 4px;
+      padding: 7px 10px;
+    }
+    #playlist-preview-icon { color: #ff0000; font-size: 11px; flex-shrink: 0; }
+    #playlist-title-text {
+      color: #e0e0e0;
+      font-size: 12px;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #playlist-title-loading { color: #555; font-size: 11px; font-style: italic; }
+
+    #btn-reset {
+      width: 100%;
+      background: transparent;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #666;
+      font-size: 12px;
+      padding: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #btn-reset:hover { border-color: #888; color: #ccc; }
+
+    footer {
+      text-align: center;
+      padding: 8px 16px;
+      border-top: 1px solid #1a1a1a;
+      font-size: 10px;
+      color: #3a3a3a;
+      letter-spacing: 0.04em;
+    }
+    footer a {
+      color: #3a3a3a;
+      text-decoration: none;
+    }
+    footer a:hover { color: #666; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" fill="#cc0000"/>
+      <text x="12" y="11" font-family="Arial" font-weight="900" font-size="10" fill="white" text-anchor="middle" dominant-baseline="middle">YT</text>
+      <rect x="2.5" y="13.5" width="19" height="0.8" fill="rgba(255,255,255,0.4)"/>
+      <text x="12" y="18.5" font-family="Arial" font-weight="700" font-size="4.5" fill="rgba(255,255,255,0.85)" text-anchor="middle" dominant-baseline="middle">LINKS</text>
+    </svg>
+    <h1>Playlist Link Extractor</h1>
+    <div class="lang-selector">
+      <button class="lang-opt" data-lang="en">EN</button>
+      <button class="lang-opt" data-lang="es">ES</button>
+    </div>
+    <button id="btn-help">?</button>
+  </header>
+
+  <div id="tutorial-panel">
+    <ol id="tutorial-list"></ol>
+  </div>
+
+  <div class="content">
+    <p id="status-msg"></p>
+
+    <div id="playlist-preview">
+      <span id="playlist-preview-icon">▶</span>
+      <span id="playlist-title-text"></span>
+    </div>
+
+    <div class="url-row">
+      <label id="url-label"></label>
+      <input
+        id="url-input"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span id="or-label"></span>
+    </div>
+
+    <button id="btn-extract" class="btn">
+      <div class="spinner" id="spinner"></div>
+      <span id="btn-label"></span>
+    </button>
+
+    <div id="results-section">
+      <div class="results-meta">
+        <span id="count-label"></span>
+        <div class="format-toggle">
+          <button class="fmt-btn active" data-fmt="full" id="fmt-full"></button>
+          <button class="fmt-btn" data-fmt="notebooklm">NotebookLM</button>
+        </div>
+      </div>
+
+      <textarea id="output" readonly></textarea>
+
+      <div class="copy-row">
+        <button class="btn-copy" id="btn-copy-full"><span id="copy-full-label"></span></button>
+        <button class="btn-copy" id="btn-copy-nlm"><span id="copy-nlm-label"></span></button>
+      </div>
+
+      <button id="btn-reset"><span id="reset-label"></span></button>
+    </div>
+  </div>
+
+  <footer>
+    Powered by Argentum Labs
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
