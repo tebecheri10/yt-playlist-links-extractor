@@ -70,7 +70,7 @@ https://www.youtube.com/watch?v=...&list=...
 
 ```bash
 # Clone the repo
-git clone https://github.com/tebecheridaniel/yt-playlist-links-extractor.git
+git clone https://github.com/tebecheri10/yt-playlist-links-extractor.git
 cd yt-playlist-links-extractor
 
 # Install dev dependencies (only needed for icon generation)
