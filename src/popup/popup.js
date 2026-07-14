@@ -1,7 +1,7 @@
 import { I18N } from './i18n.js';
-import { store, loadLang, saveLang } from './storage.js';
+import { store, loadLang, saveLang, loadFmt, saveFmt } from './storage.js';
 import { isPlaylistUrl, normalizeUrl, cleanPlaylistUrl } from './url.js';
-import { extractFromTab, pollForResult } from './messaging.js';
+import { extractFromTab, pollForResult, watchProgress } from './messaging.js';
 
 // ── DOM elements ──────────────────────────────────────────────────────────────
 const btnHelp           = document.getElementById('btn-help');
@@ -20,20 +20,21 @@ const spinner           = document.getElementById('spinner');
 const resultsSection    = document.getElementById('results-section');
 const countLabel        = document.getElementById('count-label');
 const output            = document.getElementById('output');
-const fmtFull           = document.getElementById('fmt-full');
-const fmtBtns           = document.querySelectorAll('.fmt-btn');
-const btnCopyFull       = document.getElementById('btn-copy-full');
-const btnCopyNlm        = document.getElementById('btn-copy-nlm');
-const copyFullLabel     = document.getElementById('copy-full-label');
-const copyNlmLabel      = document.getElementById('copy-nlm-label');
+const fmtLabel          = document.getElementById('fmt-label');
+const fmtSelect         = document.getElementById('fmt-select');
+const btnCopy           = document.getElementById('btn-copy');
+const copyLabel         = document.getElementById('copy-label');
+const btnDownload       = document.getElementById('btn-download');
+const downloadLabel     = document.getElementById('download-label');
 const btnReset          = document.getElementById('btn-reset');
 const resetLabel        = document.getElementById('reset-label');
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let videosData = [];
-let currentFmt = 'full';
-let t          = I18N.en;
-let onPlaylist = false;
+let videosData    = [];
+let currentFmt    = 'full';
+let playlistTitle = '';       // last known real title, used for the download filename
+let t             = I18N.en;
+let onPlaylist    = false;
 
 // ── Language ──────────────────────────────────────────────────────────────────
 function applyLang(lang) {
@@ -41,14 +42,23 @@ function applyLang(lang) {
   document.documentElement.lang = lang;
   langOpts.forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
 
-  btnHelp.title             = t.helpTitle;
-  urlInput.placeholder      = t.urlPlaceholder;
-  btnLabel.textContent      = t.btnExtract;
-  fmtFull.textContent       = t.fmtFull;
-  copyFullLabel.textContent = t.copyFull;
-  copyNlmLabel.textContent  = t.copyNlm;
-  resetLabel.textContent    = t.btnReset;
-  tutorialList.innerHTML    = t.tutorial.map(s => `<li>${s}</li>`).join('');
+  btnHelp.title          = t.helpTitle;
+  urlInput.placeholder   = t.urlPlaceholder;
+  btnLabel.textContent   = t.btnExtract;
+  fmtLabel.textContent   = t.formatLabel;
+  copyLabel.textContent  = t.btnCopy;
+  downloadLabel.textContent = t.btnDownload;
+  resetLabel.textContent = t.btnReset;
+  tutorialList.innerHTML = t.tutorial.map(s => `<li>${s}</li>`).join('');
+
+  const fmtNames = {
+    full:       t.fmtFull,
+    notebooklm: t.fmtNotebookLM,
+    markdown:   t.fmtMarkdown,
+    csv:        t.fmtCsv,
+    json:       t.fmtJson,
+  };
+  for (const opt of fmtSelect.options) opt.textContent = fmtNames[opt.value] ?? opt.value;
 
   updateUrlAreaLabels();
 
@@ -102,13 +112,18 @@ function titleFromTab(tab) {
 async function loadAndShowTitle(url, tab = null) {
   showPlaylistTitle(t.titleLoading);
   const title = titleFromTab(tab) || await fetchPlaylistTitle(url);
+  if (title) playlistTitle = title;
   showPlaylistTitle(title || t.titleUnknown);
 }
 
 // ── Status & loading ──────────────────────────────────────────────────────────
-function setStatus(key, type = '') {
-  statusMsg.textContent = t[key] ?? key;
+function setStatusText(text, type = '') {
+  statusMsg.textContent = text;
   statusMsg.className   = type;
+}
+
+function setStatus(key, type = '') {
+  setStatusText(t[key] ?? key, type);
 }
 
 function setLoading(on) {
@@ -120,9 +135,26 @@ function setLoading(on) {
 // ── Output builders ───────────────────────────────────────────────────────────
 const buildFull       = vs => vs.map(({ title, url }) => `//${title}\n${url}`).join('\n');
 const buildNotebookLM = vs => vs.map(({ url }) => url).join('\n');
+const buildMarkdown   = vs => vs.map(({ title, url }) => `- [${title}](${url})`).join('\n');
+const buildJson       = vs => JSON.stringify(vs, null, 2);
+
+// RFC 4180: quote fields containing comma, quote or newline; double up inner quotes.
+const csvField = v => /[",\n\r]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+const buildCsv = vs =>
+  ['title,url', ...vs.map(({ title, url }) => `${csvField(title)},${csvField(url)}`)].join('\n');
+
+const BUILDERS = {
+  full:       { build: buildFull,       ext: 'txt',  mime: 'text/plain'       },
+  notebooklm: { build: buildNotebookLM, ext: 'txt',  mime: 'text/plain'       },
+  markdown:   { build: buildMarkdown,   ext: 'md',   mime: 'text/markdown'    },
+  csv:        { build: buildCsv,        ext: 'csv',  mime: 'text/csv'         },
+  json:       { build: buildJson,       ext: 'json', mime: 'application/json' },
+};
+
+const currentBuilder = () => BUILDERS[currentFmt] ?? BUILDERS.full;
 
 function renderOutput() {
-  output.value = currentFmt === 'full' ? buildFull(videosData) : buildNotebookLM(videosData);
+  output.value = currentBuilder().build(videosData);
 }
 
 function showResults(videos) {
@@ -130,27 +162,31 @@ function showResults(videos) {
   countLabel.textContent = videos.length === 1 ? t.countOne : t.countMany(videos.length);
   renderOutput();
   resultsSection.style.display = 'flex';
-  btnCopyFull.classList.add('visible');
-  btnCopyNlm.classList.add('visible');
+  btnCopy.classList.add('visible');
+  btnDownload.classList.add('visible');
 }
 
-// ── Copy handler ──────────────────────────────────────────────────────────────
-function makeCopyHandler(btn, labelEl, getText) {
-  btn.addEventListener('click', async () => {
-    const text = getText();
-    if (!text) return;
-    await navigator.clipboard.writeText(text);
-    const orig = labelEl.textContent;
-    labelEl.textContent = t.copied;
-    btn.classList.add('copied');
-    setTimeout(() => { labelEl.textContent = orig; btn.classList.remove('copied'); }, 2000);
-  });
+// ── Button feedback ───────────────────────────────────────────────────────────
+function flashLabel(btn, labelEl, msg) {
+  const orig = labelEl.textContent;
+  labelEl.textContent = msg;
+  btn.classList.add('copied');
+  setTimeout(() => { labelEl.textContent = orig; btn.classList.remove('copied'); }, 2000);
+}
+
+// Turn a playlist title into a safe filename; falls back to 'playlist'.
+function sanitizeFilename(name) {
+  const clean = (name || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  return clean || 'playlist';
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   const lang = await loadLang();
   applyLang(lang);
+
+  currentFmt      = await loadFmt();
+  fmtSelect.value = currentFmt;
 
   btnExtract.disabled = true;
   setStatus('statusDefault');
@@ -165,22 +201,41 @@ async function init() {
     btnHelp.classList.toggle('active', open);
   });
 
-  fmtBtns.forEach(btn => btn.addEventListener('click', () => {
-    fmtBtns.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentFmt = btn.dataset.fmt;
+  fmtSelect.addEventListener('change', () => {
+    currentFmt = fmtSelect.value;
+    saveFmt(currentFmt);
     if (videosData.length) renderOutput();
-  }));
+  });
 
-  makeCopyHandler(btnCopyFull, copyFullLabel, () => buildFull(videosData));
-  makeCopyHandler(btnCopyNlm,  copyNlmLabel,  () => buildNotebookLM(videosData));
+  btnCopy.addEventListener('click', async () => {
+    const text = currentBuilder().build(videosData);
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    flashLabel(btnCopy, copyLabel, t.copied);
+  });
+
+  btnDownload.addEventListener('click', () => {
+    if (!videosData.length) return;
+    const { build, ext, mime } = currentBuilder();
+    const text = build(videosData);
+    if (!text) return;
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a   = document.createElement('a');
+    a.href = url;
+    a.download = `${sanitizeFilename(playlistTitle)}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    flashLabel(btnDownload, downloadLabel, t.downloaded);
+  });
 
   btnReset.addEventListener('click', async () => {
     videosData = [];
     output.value = '';
     resultsSection.style.display = 'none';
-    btnCopyFull.classList.remove('visible');
-    btnCopyNlm.classList.remove('visible');
+    btnCopy.classList.remove('visible');
+    btnDownload.classList.remove('visible');
     await store.remove('extractState');
 
     const val = normalizeUrl(urlInput.value);
@@ -228,19 +283,20 @@ async function init() {
       if (age < 3 * 60 * 1000) {
         setStatus('statusWaiting');
         setLoading(true);
+        const stopProgress = watchProgress(p => setStatusText(t.statusScrolling(p.loaded, p.total)));
         try {
           const state  = await pollForResult();
           const videos = state.videos || [];
-          setLoading(false);
-          btnExtract.disabled = !isPlaylistUrl(normalizeUrl(urlInput.value));
           videos.length === 0
             ? setStatus('statusEmpty', 'error')
             : (setStatus('statusDone', 'success'), showResults(videos));
         } catch {
-          setLoading(false);
-          btnExtract.disabled = !isPlaylistUrl(normalizeUrl(urlInput.value));
           setStatus('statusPrevFailed', 'error');
           await store.remove('extractState');
+        } finally {
+          stopProgress();
+          setLoading(false);
+          btnExtract.disabled = !isPlaylistUrl(normalizeUrl(urlInput.value));
         }
       } else {
         await store.remove('extractState');
@@ -289,8 +345,10 @@ async function init() {
 
     setLoading(true);
     resultsSection.style.display = 'none';
-    btnCopyFull.classList.remove('visible');
-    btnCopyNlm.classList.remove('visible');
+    btnCopy.classList.remove('visible');
+    btnDownload.classList.remove('visible');
+
+    const stopProgress = watchProgress(p => setStatusText(t.statusScrolling(p.loaded, p.total)));
 
     try {
       let videos, titleFromResponse;
@@ -313,7 +371,7 @@ async function init() {
         }
       }
 
-      if (titleFromResponse) showPlaylistTitle(titleFromResponse);
+      if (titleFromResponse) { playlistTitle = titleFromResponse; showPlaylistTitle(titleFromResponse); }
 
       videos.length === 0
         ? setStatus('statusEmpty', 'error')
@@ -328,6 +386,7 @@ async function init() {
         'error'
       );
     } finally {
+      stopProgress();
       setLoading(false);
       btnExtract.disabled = !isPlaylistUrl(normalizeUrl(urlInput.value));
     }

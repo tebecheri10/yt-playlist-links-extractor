@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-07
+
+### Added
+- Three new output formats: **Markdown** (`- [title](url)`), **CSV** (with RFC-4180 escaping) and **JSON**
+- **Download** button — save the extracted list as a `.txt`, `.md`, `.csv` or `.json` file (filename derived from the playlist title)
+- Live extraction progress — the status shows videos loaded as they scroll in (e.g. "Loading videos… 120 / 300"), for both same-tab and background extraction
+- Remembers your last selected output format across sessions
+
+### Changed
+- Format switching is now a dropdown (Full / NotebookLM / Markdown / CSV / JSON) with unified **Copy** and **Download** actions, replacing the two dedicated copy buttons
+- Adaptive auto-scroll: waits only as long as needed for new videos to load (faster on good connections, more reliable on slow ones) instead of a fixed 900 ms per step
+- More tolerant stop detection and a higher iteration cap for very large playlists
+
 ## [1.2.0] - 2025-03
 
 ### Added

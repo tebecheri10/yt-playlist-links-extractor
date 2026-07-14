@@ -10,6 +10,19 @@ export function extractFromTab(tabId) {
   });
 }
 
+// Polls the live scroll progress written by content.js and reports it via onTick.
+// Returns a stop() function to cancel; call it once the extraction promise settles.
+// A tick already awaiting store.get when stop() runs is ignored, so it can't
+// overwrite a final status that was set after stopping.
+export function watchProgress(onTick, intervalMs = 400) {
+  let stopped = false;
+  const interval = setInterval(async () => {
+    const { extractProgress } = await store.get('extractProgress');
+    if (!stopped && extractProgress) onTick(extractProgress);
+  }, intervalMs);
+  return () => { stopped = true; clearInterval(interval); };
+}
+
 export function pollForResult(timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;

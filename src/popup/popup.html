@@ -162,25 +162,30 @@
     }
     #count-label { font-size: 12px; color: #888; }
 
-    .format-toggle {
+    .format-select {
       display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .format-select label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    #fmt-select {
       background: #1a1a1a;
       border: 1px solid #333;
       border-radius: 4px;
-      overflow: hidden;
-    }
-    .fmt-btn {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: #888;
+      color: #e0e0e0;
       font-size: 11px;
       font-weight: 500;
       padding: 4px 8px;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+      outline: none;
+      transition: border-color 0.15s;
     }
-    .fmt-btn.active { background: #ff0000; color: #fff; }
+    #fmt-select:focus { border-color: #ff0000; }
 
     #output {
       width: 100%;
@@ -316,17 +321,23 @@
     <div id="results-section">
       <div class="results-meta">
         <span id="count-label"></span>
-        <div class="format-toggle">
-          <button class="fmt-btn active" data-fmt="full" id="fmt-full"></button>
-          <button class="fmt-btn" data-fmt="notebooklm">NotebookLM</button>
+        <div class="format-select">
+          <label id="fmt-label" for="fmt-select"></label>
+          <select id="fmt-select">
+            <option value="full"></option>
+            <option value="notebooklm"></option>
+            <option value="markdown"></option>
+            <option value="csv"></option>
+            <option value="json"></option>
+          </select>
         </div>
       </div>
 
       <textarea id="output" readonly></textarea>
 
       <div class="copy-row">
-        <button class="btn-copy" id="btn-copy-full"><span id="copy-full-label"></span></button>
-        <button class="btn-copy" id="btn-copy-nlm"><span id="copy-nlm-label"></span></button>
+        <button class="btn-copy" id="btn-copy"><span id="copy-label"></span></button>
+        <button class="btn-copy" id="btn-download"><span id="download-label"></span></button>
       </div>
 
       <button id="btn-reset"><span id="reset-label"></span></button>

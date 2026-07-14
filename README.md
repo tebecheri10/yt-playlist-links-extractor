@@ -1,24 +1,28 @@
 # YouTube Playlist Link Extractor
 
-A Chrome extension that extracts all video links from a YouTube playlist in seconds. Supports two output formats and is available in English and Spanish.
+A Chrome extension that extracts all video links from a YouTube playlist in seconds. Supports five output formats and is available in English and Spanish.
 
 ## Features
 
-- **Auto-scroll** — automatically scrolls the playlist page to load every video before extracting
-- **Two output formats:**
+- **Auto-scroll** — automatically scrolls the playlist page to load every video before extracting, with **live progress** (videos loaded / total)
+- **Five output formats:**
   - **Full** — `//Video Title` + URL, one per line
-  - **URLs only** — plain list of URLs (ideal for NotebookLM and similar tools)
+  - **NotebookLM** — plain list of URLs (ideal for NotebookLM and similar tools)
+  - **Markdown** — `- [Title](URL)`, one per line
+  - **CSV** — `title,url` with a header row (opens in Excel / Google Sheets)
+  - **JSON** — array of `{ title, url }` objects
+- **Copy or download** — copy to clipboard or save as a `.txt` / `.md` / `.csv` / `.json` file
 - **Bilingual** — English and Spanish, auto-detected from your system language
 - **Smart tab detection** — auto-fills the URL if you already have a playlist open
-- **Copy to clipboard** — separate copy buttons for each format
 - **Background extraction** — works even if you navigate away while it's running
+- Remembers your last selected format
 - No account required, no data sent anywhere
 
 ## Installation
 
 ### From the Chrome Web Store
 
-*(Coming soon — link will be added after publication)*
+Install it directly from the [Chrome Web Store](https://chromewebstore.google.com/) *(TODO: replace with the live listing URL)*.
 
 ### Manual installation (Developer Mode)
 
@@ -48,16 +52,39 @@ A Chrome extension that extracts all video links from a YouTube playlist in seco
 **Full format:**
 ```
 //Introduction to Machine Learning
-https://www.youtube.com/watch?v=...&list=...
+https://www.youtube.com/watch?v=...
 //What is Neural Network?
-https://www.youtube.com/watch?v=...&list=...
+https://www.youtube.com/watch?v=...
 ```
 
-**URLs only (NotebookLM format):**
+**NotebookLM format (URLs only):**
 ```
-https://www.youtube.com/watch?v=...&list=...
-https://www.youtube.com/watch?v=...&list=...
+https://www.youtube.com/watch?v=...
+https://www.youtube.com/watch?v=...
 ```
+
+**Markdown:**
+```
+- [Introduction to Machine Learning](https://www.youtube.com/watch?v=...)
+- [What is Neural Network?](https://www.youtube.com/watch?v=...)
+```
+
+**CSV:**
+```
+title,url
+Introduction to Machine Learning,https://www.youtube.com/watch?v=...
+What is Neural Network?,https://www.youtube.com/watch?v=...
+```
+
+**JSON:**
+```json
+[
+  { "title": "Introduction to Machine Learning", "url": "https://www.youtube.com/watch?v=..." },
+  { "title": "What is Neural Network?", "url": "https://www.youtube.com/watch?v=..." }
+]
+```
+
+Any format can be copied to the clipboard or downloaded as a file.
 
 ## Known Limitations
 

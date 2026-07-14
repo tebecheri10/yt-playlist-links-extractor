@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Playlist Link Extractor",
-  "version": "1.2.0",
-  "description": "Extract all video links from a YouTube playlist as text. Supports Full format (title + URL) and URLs-only for NotebookLM.",
+  "version": "1.3.0",
+  "description": "Extract all video links from a YouTube playlist. Copy or download as Full, NotebookLM, Markdown, CSV or JSON, with live extraction progress.",
   "background": {
     "service_worker": "src/background.js"
   },

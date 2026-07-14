@@ -10,3 +10,6 @@ export function detectSystemLang() {
 
 export async function loadLang()     { const { lang } = await store.get('lang'); return lang || detectSystemLang(); }
 export async function saveLang(lang) { await store.set({ lang }); }
+
+export async function loadFmt()    { const { fmt } = await store.get('fmt'); return fmt || 'full'; }
+export async function saveFmt(fmt) { await store.set({ fmt }); }
