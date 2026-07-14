@@ -1,7 +1,7 @@
 import { I18N } from './i18n.js';
-import { store, loadLang, saveLang, loadFmt, saveFmt } from './storage.js';
-import { isPlaylistUrl, normalizeUrl, cleanPlaylistUrl } from './url.js';
-import { extractFromTab, pollForResult, watchProgress } from './messaging.js';
+import { store, loadLang, saveLang, loadFmt, saveFmt, loadJsonIncludeId, saveJsonIncludeId } from './storage.js';
+import { isPlaylistUrl, isPlaylistPage, normalizeUrl, cleanPlaylistUrl } from './url.js';
+import { extractFromTab, pollForResult, watchProgress, reloadAndWait } from './messaging.js';
 
 // ── DOM elements ──────────────────────────────────────────────────────────────
 const btnHelp           = document.getElementById('btn-help');
@@ -22,19 +22,24 @@ const countLabel        = document.getElementById('count-label');
 const output            = document.getElementById('output');
 const fmtLabel          = document.getElementById('fmt-label');
 const fmtSelect         = document.getElementById('fmt-select');
+const jsonIdRow         = document.getElementById('json-id-row');
+const jsonIdToggle      = document.getElementById('json-id-toggle');
+const jsonIdLabel       = document.getElementById('json-id-label');
 const btnCopy           = document.getElementById('btn-copy');
 const copyLabel         = document.getElementById('copy-label');
 const btnDownload       = document.getElementById('btn-download');
 const downloadLabel     = document.getElementById('download-label');
 const btnReset          = document.getElementById('btn-reset');
 const resetLabel        = document.getElementById('reset-label');
+const versionLabel      = document.getElementById('version-label');
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let videosData    = [];
-let currentFmt    = 'full';
-let playlistTitle = '';       // last known real title, used for the download filename
-let t             = I18N.en;
-let onPlaylist    = false;
+let videosData     = [];
+let currentFmt     = 'full';
+let jsonIncludeId  = false;   // whether the JSON output includes each video's ID
+let playlistTitle  = '';      // last known real title, used for the download filename
+let t              = I18N.en;
+let onPlaylist     = false;
 
 // ── Language ──────────────────────────────────────────────────────────────────
 function applyLang(lang) {
@@ -49,6 +54,7 @@ function applyLang(lang) {
   copyLabel.textContent  = t.btnCopy;
   downloadLabel.textContent = t.btnDownload;
   resetLabel.textContent = t.btnReset;
+  jsonIdLabel.textContent = t.jsonIncludeId;
   tutorialList.innerHTML = t.tutorial.map(s => `<li>${s}</li>`).join('');
 
   const fmtNames = {
@@ -76,6 +82,10 @@ function updateUrlAreaLabels() {
     urlLabel.textContent  = t.urlLabelEmpty;
     orLabel.style.display = 'none';
   }
+}
+
+function updateJsonIdVisibility() {
+  jsonIdRow.classList.toggle('visible', currentFmt === 'json');
 }
 
 // ── Playlist title ────────────────────────────────────────────────────────────
@@ -136,7 +146,12 @@ function setLoading(on) {
 const buildFull       = vs => vs.map(({ title, url }) => `//${title}\n${url}`).join('\n');
 const buildNotebookLM = vs => vs.map(({ url }) => url).join('\n');
 const buildMarkdown   = vs => vs.map(({ title, url }) => `- [${title}](${url})`).join('\n');
-const buildJson       = vs => JSON.stringify(vs, null, 2);
+
+const videoId = url => { try { return new URL(url).searchParams.get('v'); } catch { return null; } };
+const buildJson = vs => JSON.stringify(
+  vs.map(({ title, url }) => jsonIncludeId ? { id: videoId(url), title, url } : { title, url }),
+  null, 2
+);
 
 // RFC 4180: quote fields containing comma, quote or newline; double up inner quotes.
 const csvField = v => /[",\n\r]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
@@ -182,11 +197,16 @@ function sanitizeFilename(name) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
+  versionLabel.textContent = `v${chrome.runtime.getManifest().version}`;
+
   const lang = await loadLang();
   applyLang(lang);
 
-  currentFmt      = await loadFmt();
-  fmtSelect.value = currentFmt;
+  currentFmt         = await loadFmt();
+  fmtSelect.value    = currentFmt;
+  jsonIncludeId      = await loadJsonIncludeId();
+  jsonIdToggle.checked = jsonIncludeId;
+  updateJsonIdVisibility();
 
   btnExtract.disabled = true;
   setStatus('statusDefault');
@@ -204,7 +224,14 @@ async function init() {
   fmtSelect.addEventListener('change', () => {
     currentFmt = fmtSelect.value;
     saveFmt(currentFmt);
+    updateJsonIdVisibility();
     if (videosData.length) renderOutput();
+  });
+
+  jsonIdToggle.addEventListener('change', () => {
+    jsonIncludeId = jsonIdToggle.checked;
+    saveJsonIncludeId(jsonIncludeId);
+    if (currentFmt === 'json' && videosData.length) renderOutput();
   });
 
   btnCopy.addEventListener('click', async () => {
@@ -278,6 +305,12 @@ async function init() {
         setStatus('statusPrevResult', 'success');
         showResults(extractState.videos);
       }
+    } else if (extractState?.status === 'error') {
+      // Surface the real failure instead of silently discarding it — the
+      // user would otherwise reopen the popup and see nothing, looking as
+      // if the extraction had simply vanished.
+      setStatusText(extractState.message || t.statusPrevFailed, 'error');
+      await store.remove('extractState');
     } else if (extractState?.status === 'loading') {
       const age = Date.now() - (extractState.startedAt || 0);
       if (age < 3 * 60 * 1000) {
@@ -290,8 +323,8 @@ async function init() {
           videos.length === 0
             ? setStatus('statusEmpty', 'error')
             : (setStatus('statusDone', 'success'), showResults(videos));
-        } catch {
-          setStatus('statusPrevFailed', 'error');
+        } catch (err) {
+          setStatusText(err?.message === 'Timeout.' ? t.statusPrevFailed : (err?.message || t.statusPrevFailed), 'error');
           await store.remove('extractState');
         } finally {
           stopProgress();
@@ -341,7 +374,13 @@ async function init() {
       clickTab = tab || activeTab;
     } catch {}
 
-    const sameTab = cleanPlaylistUrl(clickTab?.url || '') === targetUrl && isPlaylistUrl(targetUrl);
+    // Only extract in-place on an actual /playlist page. A /watch page with a
+    // playlist sidebar never had our content script injected and can carry
+    // stale DOM from a previously visited playlist — safer to open the real
+    // /playlist page in a new tab (same path used for non-YouTube tabs).
+    const sameTab = isPlaylistPage(clickTab?.url || '')
+      && cleanPlaylistUrl(clickTab.url) === targetUrl
+      && isPlaylistUrl(targetUrl);
 
     setLoading(true);
     resultsSection.style.display = 'none';
@@ -355,18 +394,33 @@ async function init() {
 
       if (sameTab && clickTab) {
         setStatus('statusExtracting');
-        const res         = await extractFromTab(clickTab.id);
+        let res = await extractFromTab(clickTab.id);
+
+        // 0 videos on a real /playlist page is suspicious rather than
+        // conclusive: YouTube's SPA can leave stale/incomplete DOM behind
+        // from an earlier in-page navigation. Force one full reload and
+        // retry before trusting the empty result.
+        if (res.videos.length === 0) {
+          await reloadAndWait(clickTab.id);
+          setStatus('statusExtracting');
+          res = await extractFromTab(clickTab.id);
+        }
+
         videos            = res.videos;
         titleFromResponse = res.title;
       } else {
         await store.set({ extractState: { status: 'loading', startedAt: Date.now() } });
-        chrome.runtime.sendMessage({ action: 'openAndExtract', url: targetUrl, originalTabId: clickTab?.id });
+        chrome.runtime.sendMessage({ action: 'openAndExtract', url: targetUrl });
         setStatus('statusOpening');
         try {
           const state = await pollForResult();
           videos      = state.videos || [];
-        } catch {
-          setStatus('statusWaiting');
+        } catch (err) {
+          // Surface the real background failure (e.g. couldn't open the
+          // playlist window) instead of a generic "still working" message —
+          // otherwise the user sees no feedback and thinks it's frozen.
+          setStatusText(err?.message === 'Timeout.' ? t.statusWaiting : (err?.message || t.statusWaiting), 'error');
+          await store.remove('extractState');
           return;
         }
       }

@@ -1,11 +1,59 @@
 import { store } from './storage.js';
 
-export function extractFromTab(tabId) {
+function sendExtractMessage(tabId) {
   return new Promise((resolve, reject) => {
     chrome.tabs.sendMessage(tabId, { action: 'extractLinks' }, res => {
       if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
       if (!res || !Array.isArray(res.videos)) return reject(new Error('No response from content script.'));
       resolve(res);
+    });
+  });
+}
+
+// YouTube is a single-page app: navigating to a playlist without a full
+// page load (e.g. clicking a link, using back/forward) never triggers the
+// manifest's content_scripts injection, so the first message can fail with
+// "Could not establish connection". Inject the script on demand and retry
+// once before giving up.
+export async function extractFromTab(tabId) {
+  try {
+    return await sendExtractMessage(tabId);
+  } catch (err) {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['src/content.js'] });
+    } catch (_) {
+      throw err;
+    }
+    return await sendExtractMessage(tabId);
+  }
+}
+
+// Forces a full page reload on tabId and waits for it to finish loading.
+// Used as a last-resort fix for a real /playlist page that reports 0 videos:
+// YouTube's SPA can leave stale/incomplete DOM behind from a previous
+// in-page navigation, and only a genuine reload guarantees a clean slate
+// (fresh DOM + the manifest's content_scripts re-injecting properly).
+export function reloadAndWait(tabId, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      fn(arg);
+    };
+
+    const onUpdated = (id, changeInfo) => {
+      if (id === tabId && changeInfo.status === 'complete') finish(resolve);
+    };
+    chrome.tabs.onUpdated.addListener(onUpdated);
+
+    const timer = setTimeout(() => finish(reject, new Error('Timed out reloading the page.')), timeoutMs);
+
+    chrome.tabs.reload(tabId, {}, () => {
+      if (chrome.runtime.lastError) finish(reject, new Error(chrome.runtime.lastError.message));
     });
   });
 }

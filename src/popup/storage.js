@@ -13,3 +13,6 @@ export async function saveLang(lang) { await store.set({ lang }); }
 
 export async function loadFmt()    { const { fmt } = await store.get('fmt'); return fmt || 'full'; }
 export async function saveFmt(fmt) { await store.set({ fmt }); }
+
+export async function loadJsonIncludeId()        { const { jsonIncludeId } = await store.get('jsonIncludeId'); return !!jsonIncludeId; }
+export async function saveJsonIncludeId(include) { await store.set({ jsonIncludeId: include }); }

@@ -187,6 +187,18 @@
     }
     #fmt-select:focus { border-color: #ff0000; }
 
+    .checkbox-row {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #888;
+      cursor: pointer;
+      user-select: none;
+    }
+    .checkbox-row.visible { display: flex; }
+    .checkbox-row input { accent-color: #ff0000; cursor: pointer; }
+
     #output {
       width: 100%;
       height: 190px;
@@ -333,6 +345,11 @@
         </div>
       </div>
 
+      <label id="json-id-row" class="checkbox-row">
+        <input type="checkbox" id="json-id-toggle" />
+        <span id="json-id-label"></span>
+      </label>
+
       <textarea id="output" readonly></textarea>
 
       <div class="copy-row">
@@ -345,7 +362,7 @@
   </div>
 
   <footer>
-    Powered by Argentum Labs
+    Powered by Argentum Labs <span id="version-label"></span>
   </footer>
 
   <script type="module" src="popup.js"></script>
